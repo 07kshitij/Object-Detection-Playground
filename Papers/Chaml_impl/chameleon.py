@@ -1,37 +1,41 @@
-from getdata import data
+# from getdata import data
 import os
 import pprint
 
 class chameleon:
     def __init__(self):
         # data.getData()
-        self.params = {"frameRate" : [25, 20, 10, 5, 2], 
-                "imgSize" : [1080, 960, 840, 720, 600], 
-                "models" : []}
-        self.model_path = '/home/kshitij/darknet'
+        self.params = {"frameRate" : [20], 
+                "imgSize" : [960], 
+                "models" : ['yolo']}
+ 
+        self.model_path = '/home/kshitij/btp/Papers/Chaml_impl/darknet'
+        self.source_file = '/home/kshitij/btp/DataSet/25fps.mkv'
+        self.model_data = '/home/kshitij/btp/Papers/Chaml_impl/darknet/data'
         self.accuracy = 0.8
-        self.threshold = 0.9
+        self.threshold = 0.5
+        # self.data = data()
         self.runChameleon()
 
+    def getData(self, params, source_file):
+        path = '.'
+
+        orgFR = 25
+        frame = params['frameRate']
+        img = params['imgSize']
+
+        os.system('ffmpeg -i {} -filter:v "setpts={}*PTS" {}fps.mkv'.format(source_file, orgFR/frame, frame))
+        os.system('ffmpeg -i {}fps.mkv -filter:v scale="{}:trunc(ow/a/2)*2" -c:a copy {}p_{}fps.mkv'.format(frame, img, img, frame))
+
+        return '{}p_{}fps.mkv'.format(img, frame)
+
     def runChameleon(self):
-        # Todo : 
-        # Group videos according to similarity (updateSpatial)
-        # Split video to frames
-        # 
-        path = '../../DataSet'
-        files = []
-    
-        for file in os.listdir(path):
-            if file.endswith('.mkv'):
-                files.append(file)
-        itr = 0
-        # for file in files:
-        #     self.getFrames(os.path.join(path, file), 10, 'res0_' + str(itr))
-        #     itr += 1
-        self.getF1score(1, 1)
+        config = self.profile(1, self.params, 2)
+        print(config)
     
     def getFrames(self, file, frame = 0, outfile = 'res0'):
         os.system('ffmpeg -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(file, frame, outfile))
+        os.system('mv {}.jpg {}'.format(outfile, self.model_data))
 
     def updateSpatial(self):
         # Todo : Implement paper
@@ -43,13 +47,16 @@ class chameleon:
 
     def profile(self, segment, configurations, k):
         golden_config = self.getGoldenConfig()
+        file = self.getData(golden_config, self.source_file)
         curr_config = golden_config
         knob_val_to_score = dict()
         for param in self.params:
             curr_config = golden_config
             for value in self.params[param]:
                 curr_config[param] = value
-                F1_score = self.getF1score(curr_config, golden_config)
+                print(curr_config)
+                print(golden_config)
+                F1_score = self.F1(segment, curr_config, file)
                 knob_val_to_score[value] = F1_score
 
         accurate_configs = list()
@@ -57,15 +64,14 @@ class chameleon:
         for config in configurations:
             config_score = 1
             for param in configurations.keys():
-                config_score *= knob_val_to_score[param]
+                config_score *= knob_val_to_score[configurations[param][0]]
             if config_score >= self.accuracy:
                 accurate_configs.append(config)
 
         return accurate_configs
 
     def getGoldenConfig(self):
-        # Todo : See how to set params for this 
-        return        
+        return {"frameRate" : 25, "imgSize" : 1080, "models" : 'yolo'}
 
     def getbbox(self, file):
         # Redirect YOLO's output to a file having a list of dicts
@@ -87,16 +93,35 @@ class chameleon:
 
         return bounding_boxes
 
-    def getF1score(self, curr_config, golden_config):
-        # Run for all bounding boxes and calculate accuracy
-        path = './darknet/'
+    def F1(self, segment, curr_config, gold_file):
+        sum = 0
+        curr_file = self.getData(curr_config, self.source_file)
+        for S in range(segment):
+            self.getFrames(curr_file, S, 'curr')
+            self.getFrames(gold_file, S, 'base')
+            self.runYOLO('curr.jpg', 'base.jpg')
+            sum += self.getF1score()
+
+        return sum / segment
+
+    def runYOLO(self, curr_file, golden_file):
+        os.chdir(self.model_path)
+        os.system('./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(curr_file, 'curr.txt'))
+        os.system('./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(golden_file, 'base.txt'))
+        print("YOLO Run completed")
+        os.chdir('/home/kshitij/btp/Papers/Chaml_impl/')
+        return
+
+    def getF1score(self):
+
+        path = '/home/kshitij/btp/Papers/Chaml_impl/darknet'
         file_golden = ''
         file_current = ''
         for file in os.listdir(path):
             if file.endswith('.txt'):
                 if file.endswith('base.txt'):
                     file_golden = file
-                else:
+                if file.endswith('curr.txt'):
                     file_current = file
         precision = 0.0
         recall = 0.0
@@ -105,8 +130,10 @@ class chameleon:
         total_detect = len(gold_bboxes)
         total_object = len(curr_bboxes)
         true_positive = 0
-        # pprint.pprint(gold_bboxes)
-        # pprint.pprint(curr_bboxes)
+        print(file_golden)
+        print(file_current)
+        pprint.pprint(gold_bboxes)
+        pprint.pprint(curr_bboxes)
         for box_1 in curr_bboxes:
             for box_2 in gold_bboxes:
                 if box_1[0] == box_2[0]:
@@ -134,6 +161,7 @@ class chameleon:
         precision = true_positive / total_detect
         recall = true_positive / total_object
         F1 = 2 / ((1 / precision) + (1 / recall))
+        print(F1)
         return F1
 
 if __name__ == "__main__":
