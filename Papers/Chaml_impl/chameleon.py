@@ -1,8 +1,6 @@
-# from getdata import data
 import os
 import pprint
 from shutil import copyfile
-
 
 class chameleon:
     def __init__(self):
@@ -11,12 +9,13 @@ class chameleon:
                        "imgSize": [960],
                        "models": ['yolo']}
 
-        self.model_path = '/home/kshitij/btp/Papers/Chaml_impl/darknet'
-        self.source_file = '/home/kshitij/btp/DataSet/25fps.mkv'
-        self.model_data = '/home/kshitij/btp/Papers/Chaml_impl/darknet/data'
+        self.model_path = os.path.join(os.getenv('HOME_PATH'), 'Papers/Chaml_impl/darknet')
+        self.source_file = os.path.join(os.getenv('HOME_PATH'), 'DataSet/25fps.mkv')
+        self.model_data = os.path.join(os.getenv('HOME_PATH'), 'Papers/Chaml_impl/darknet/data')
         self.accuracy = 0.8
-        self.threshold = 0.5
-        # self.data = data()
+        self.threshold = 0.3
+        self.top_config = 2
+        print(self.model_path)
         self.runChameleon()
 
     @staticmethod
@@ -55,12 +54,11 @@ class chameleon:
                 path, dims[0], dims[1], outfile)
         )
         copyfile(outfile, path)
-        print(" +++ Removing Old File +++ ")
         os.system('rm -rf {}'.format(outfile))
 
     def runChameleon(self):
-        config = self.profile(1, self.params, 2)
-        print(config)
+        config = self.profile(1, self.params, self.top_config)
+        print("Top k Configs : ", config)
 
     def getFrames(self, file, frame=0, outfile='res0'):
         os.system(
@@ -73,7 +71,6 @@ class chameleon:
 
     def updateTemporal(self):
         # Todo : Implement paper
-
         return
 
     def profile(self, segment, configurations, k):
@@ -87,8 +84,8 @@ class chameleon:
             curr_config = golden_config
             for value in self.params[param]:
                 curr_config[param] = value
-                print(curr_config)
-                print(golden_config)
+                print("\n+++ Current Configuration : ", curr_config)
+                print("+++ Golden Configuration : ", golden_config, "\n")
                 F1_score = self.F1(segment, curr_config, file, golden_dims)
                 knob_val_to_score[value] = F1_score
 
@@ -135,6 +132,7 @@ class chameleon:
             self.getFrames(curr_file, S, 'curr')
             self.getFrames(gold_file, S, 'base')
             # self.scaleImage('curr.jpg', golden_dims)
+            print("\n\n +++ YOLO Running +++ \n\n")
             self.runYOLO('curr.jpg', 'base.jpg')
             sum += self.getF1score()
 
@@ -146,7 +144,7 @@ class chameleon:
             './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(curr_file, 'curr.txt'))
         os.system(
             './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(golden_file, 'base.txt'))
-        print("YOLO Run completed")
+        print("\n\n +++ YOLO Run completed +++ \n\n")
         os.chdir('/home/kshitij/btp/Papers/Chaml_impl/')
         return
 
@@ -168,8 +166,8 @@ class chameleon:
         total_detect = len(gold_bboxes)
         total_object = len(curr_bboxes)
         true_positive = 0
-        pprint.pprint(gold_bboxes)
-        pprint.pprint(curr_bboxes)
+        # pprint.pprint(gold_bboxes)
+        # pprint.pprint(curr_bboxes)
         for box_1 in curr_bboxes:
             for box_2 in gold_bboxes:
                 if box_1[0] == box_2[0]:
@@ -191,6 +189,7 @@ class chameleon:
                     IoU = (intersection) / (A1 + A2 - intersection)
                     assert IoU >= 0.0
                     assert IoU <= 1.0
+                    # print("IoU = {}".format(IoU))
                     if IoU >= self.threshold:
                         true_positive += 1
                         gold_bboxes.remove(box_2)
@@ -198,10 +197,15 @@ class chameleon:
 
         precision = true_positive / total_detect
         recall = true_positive / total_object
-        print(true_positive, total_detect, total_object)
-        F1 = 2 / ((1 / precision) + (1 / recall))
-        print(F1)
-        return F1
+        print("\n +++ True Pos = {}, Golden Config Obj. Cnt = {}, Curr Config Obj. Cnt = {} +++\n".format(
+            true_positive, total_detect, total_object))
+        try:
+            F1 = 2 / ((1 / precision) + (1 / recall))
+            print(F1)
+            return F1
+        except:
+            ZeroDivisionError
+            return 0
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-data/base.jpg: Predicted in 0.134500 seconds.
+data/base.jpg: Predicted in 0.131870 seconds.
 bus: 93%
 505 199 791 439
 bicycle: 98%

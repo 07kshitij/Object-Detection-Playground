@@ -1,4 +1,4 @@
-data/curr.jpg: Predicted in 0.132351 seconds.
+data/curr.jpg: Predicted in 0.132354 seconds.
 bus: 89%
 451 176 703 392
 bicycle: 99%
