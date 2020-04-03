@@ -191,7 +191,6 @@ class chameleon:
                     IoU = (intersection) / (A1 + A2 - intersection)
                     assert IoU >= 0.0
                     assert IoU <= 1.0
-                    print(box_1, box_2, IoU)
                     if IoU >= self.threshold:
                         true_positive += 1
                         gold_bboxes.remove(box_2)

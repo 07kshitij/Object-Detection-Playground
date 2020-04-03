@@ -1,0 +1,24 @@
+dog: 100%
+Bounding Box: Left= 134, Top= 214, Right= 313, Bottom= 542
+truck: 92%
+Bounding Box: Left= 476, Top= 81, Right= 684, Bottom= 168
+bicycle: 99%
+Bounding Box: Left= 101, Top= 126, Right= 587, Bottom= 447
+dog: 100%
+Bounding Box: Left= 134, Top= 214, Right= 313, Bottom= 542
+truck: 92%
+Bounding Box: Left= 476, Top= 81, Right= 684, Bottom= 168
+bicycle: 99%
+Bounding Box: Left= 101, Top= 126, Right= 587, Bottom= 447
+dog: 100%
+Bounding Box: Left= 134, Top= 214, Right= 313, Bottom= 542
+truck: 92%
+Bounding Box: Left= 476, Top= 81, Right= 684, Bottom= 168
+bicycle: 99%
+Bounding Box: Left= 101, Top= 126, Right= 587, Bottom= 447
+dog: 100%
+Bounding Box: Left= 134, Top= 214, Right= 313, Bottom= 542
+truck: 92%
+Bounding Box: Left= 476, Top= 81, Right= 684, Bottom= 168
+bicycle: 99%
+Bounding Box: Left= 101, Top= 126, Right= 587, Bottom= 447
