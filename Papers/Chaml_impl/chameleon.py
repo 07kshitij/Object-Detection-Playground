@@ -1,14 +1,16 @@
 # from getdata import data
 import os
 import pprint
+from shutil import copyfile
+
 
 class chameleon:
     def __init__(self):
         # data.getData()
-        self.params = {"frameRate" : [20], 
-                "imgSize" : [960], 
-                "models" : ['yolo']}
- 
+        self.params = {"frameRate": [20],
+                       "imgSize": [960],
+                       "models": ['yolo']}
+
         self.model_path = '/home/kshitij/btp/Papers/Chaml_impl/darknet'
         self.source_file = '/home/kshitij/btp/DataSet/25fps.mkv'
         self.model_data = '/home/kshitij/btp/Papers/Chaml_impl/darknet/data'
@@ -17,37 +19,68 @@ class chameleon:
         # self.data = data()
         self.runChameleon()
 
-    def getData(self, params, source_file):
+    @staticmethod
+    def getData(params, source_file):
         path = '.'
 
         orgFR = 25
         frame = params['frameRate']
         img = params['imgSize']
 
-        os.system('ffmpeg -i {} -filter:v "setpts={}*PTS" {}fps.mkv'.format(source_file, orgFR/frame, frame))
-        os.system('ffmpeg -i {}fps.mkv -filter:v scale="{}:trunc(ow/a/2)*2" -c:a copy {}p_{}fps.mkv'.format(frame, img, img, frame))
+        os.system(
+            'ffmpeg -loglevel quiet -i {} -filter:v "setpts={}*PTS" {}fps.mkv'.format(source_file, orgFR/frame, frame))
+        os.system(
+            'ffmpeg -loglevel quiet -i {}fps.mkv -filter:v scale="{}:trunc(ow/a/2)*2" -c:a copy {}p_{}fps.mkv'.format(frame, img, img, frame))
 
         return '{}p_{}fps.mkv'.format(img, frame)
+
+    @staticmethod
+    def getImageDims(file):
+        os.system(
+            'ffprobe -loglevel quiet -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {} > tmp.txt'.format(
+                file)
+        )
+        with open('tmp.txt', 'r') as f:
+            dims = f.readlines()[0]
+            dims = dims[:-1]  # Remove the newline character
+            dims = [(int)(x) for x in dims.split(',')]
+        os.system('rm -rf tmp.txt')
+        return dims
+
+    def scaleImage(self, file, dims):
+        path = os.path.join(self.model_data, file)
+        outfile = os.path.join(self.model_data, 'out_' + file)
+        os.system(
+            'ffmpeg -loglevel quiet -i {} -vf scale={}:{} {}'.format(
+                path, dims[0], dims[1], outfile)
+        )
+        copyfile(outfile, path)
+        print(" +++ Removing Old File +++ ")
+        os.system('rm -rf {}'.format(outfile))
 
     def runChameleon(self):
         config = self.profile(1, self.params, 2)
         print(config)
-    
-    def getFrames(self, file, frame = 0, outfile = 'res0'):
-        os.system('ffmpeg -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(file, frame, outfile))
+
+    def getFrames(self, file, frame=0, outfile='res0'):
+        os.system(
+            'ffmpeg -loglevel quiet -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(file, frame, outfile))
         os.system('mv {}.jpg {}'.format(outfile, self.model_data))
 
-    def updateSpatial(self):
+    def updateSpatial(self, videos, configurations):
         # Todo : Implement paper
         return
-    
+
     def updateTemporal(self):
         # Todo : Implement paper
+
         return
 
     def profile(self, segment, configurations, k):
         golden_config = self.getGoldenConfig()
         file = self.getData(golden_config, self.source_file)
+        golden_dims = self.getImageDims(self.source_file)
+        print(" +++ In profile : Golden Config Dims = " + str(golden_dims))
         curr_config = golden_config
         knob_val_to_score = dict()
         for param in self.params:
@@ -56,7 +89,7 @@ class chameleon:
                 curr_config[param] = value
                 print(curr_config)
                 print(golden_config)
-                F1_score = self.F1(segment, curr_config, file)
+                F1_score = self.F1(segment, curr_config, file, golden_dims)
                 knob_val_to_score[value] = F1_score
 
         accurate_configs = list()
@@ -70,10 +103,12 @@ class chameleon:
 
         return accurate_configs
 
-    def getGoldenConfig(self):
-        return {"frameRate" : 25, "imgSize" : 1080, "models" : 'yolo'}
+    @staticmethod
+    def getGoldenConfig():
+        return {"frameRate": 25, "imgSize": 1080, "models": 'yolo'}
 
-    def getbbox(self, file):
+    @staticmethod
+    def getbbox(file):
         # Redirect YOLO's output to a file having a list of dicts
         # returns : list of tuples (Class, {Bounding Box : x1, x2, y1, y2})
         bounding_boxes = list()
@@ -93,12 +128,13 @@ class chameleon:
 
         return bounding_boxes
 
-    def F1(self, segment, curr_config, gold_file):
+    def F1(self, segment, curr_config, gold_file, golden_dims):
         sum = 0
         curr_file = self.getData(curr_config, self.source_file)
         for S in range(segment):
             self.getFrames(curr_file, S, 'curr')
             self.getFrames(gold_file, S, 'base')
+            # self.scaleImage('curr.jpg', golden_dims)
             self.runYOLO('curr.jpg', 'base.jpg')
             sum += self.getF1score()
 
@@ -106,8 +142,10 @@ class chameleon:
 
     def runYOLO(self, curr_file, golden_file):
         os.chdir(self.model_path)
-        os.system('./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(curr_file, 'curr.txt'))
-        os.system('./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(golden_file, 'base.txt'))
+        os.system(
+            './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(curr_file, 'curr.txt'))
+        os.system(
+            './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(golden_file, 'base.txt'))
         print("YOLO Run completed")
         os.chdir('/home/kshitij/btp/Papers/Chaml_impl/')
         return
@@ -130,8 +168,6 @@ class chameleon:
         total_detect = len(gold_bboxes)
         total_object = len(curr_bboxes)
         true_positive = 0
-        print(file_golden)
-        print(file_current)
         pprint.pprint(gold_bboxes)
         pprint.pprint(curr_bboxes)
         for box_1 in curr_bboxes:
@@ -147,12 +183,15 @@ class chameleon:
 
                     intersection = (x_right - x_left) * (y_bottom - y_top)
 
-                    A1 = (box_1[1][2] - box_1[1][0]) * (box_1[1][3] - box_1[1][1])
-                    A2 = (box_2[1][2] - box_2[1][0]) * (box_2[1][3] - box_2[1][1])
+                    A1 = (box_1[1][2] - box_1[1][0]) * \
+                        (box_1[1][3] - box_1[1][1])
+                    A2 = (box_2[1][2] - box_2[1][0]) * \
+                        (box_2[1][3] - box_2[1][1])
 
                     IoU = (intersection) / (A1 + A2 - intersection)
                     assert IoU >= 0.0
                     assert IoU <= 1.0
+                    print(box_1, box_2, IoU)
                     if IoU >= self.threshold:
                         true_positive += 1
                         gold_bboxes.remove(box_2)
@@ -160,9 +199,11 @@ class chameleon:
 
         precision = true_positive / total_detect
         recall = true_positive / total_object
+        print(true_positive, total_detect, total_object)
         F1 = 2 / ((1 / precision) + (1 / recall))
         print(F1)
         return F1
+
 
 if __name__ == "__main__":
     chameleon()

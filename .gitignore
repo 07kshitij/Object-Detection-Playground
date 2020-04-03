@@ -3,6 +3,5 @@
 *.mkv
 *.mp4
 DataSet/
-darknet/
-darknet_new/
+*.weights
 __pycache__
