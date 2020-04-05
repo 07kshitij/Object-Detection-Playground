@@ -1,69 +1,90 @@
 import os
 import pprint
 from shutil import copyfile
+from itertools import product
+
 
 class chameleon:
     def __init__(self):
-        # data.getData()
-        self.params = {"frameRate": [20],
-                       "imgSize": [960],
-                       "models": ['yolo']}
+        ''' Initialize all parameters and env paths '''
+        self.configs = [
+            {"frameRate": 20, "imgSize": 960, "models": "yolo"},
+            {"frameRate": 25, "imgSize": 1080, "models": "yolo"},
+        ]
+        self.params = ["frameRate", "imgSize", "models"]
 
-        self.model_path = os.path.join(os.getenv('HOME_PATH'), 'Papers/Chaml_impl/darknet')
-        self.source_file = os.path.join(os.getenv('HOME_PATH'), 'DataSet/25fps.mkv')
-        self.model_data = os.path.join(os.getenv('HOME_PATH'), 'Papers/Chaml_impl/darknet/data')
+        self.model_path = os.path.join(
+            os.getenv("HOME_PATH"), "Papers/Chaml_impl/darknet"
+        )
+        self.source_file = os.path.join(os.getenv("HOME_PATH"), "DataSet/25fps.mkv")
+        self.model_data = os.path.join(
+            os.getenv("HOME_PATH"), "Papers/Chaml_impl/darknet/data"
+        )
         self.accuracy = 0.8
-        self.threshold = 0.3
+        self.threshold = 0.5
         self.top_config = 2
-        print(self.model_path)
         self.runChameleon()
 
     @staticmethod
     def getData(params, source_file):
-        path = '.'
-
+        ''' Convert the original videofile's params to those specified by `params` '''
         orgFR = 25
-        frame = params['frameRate']
-        img = params['imgSize']
+        frame = params["frameRate"]
+        img = params["imgSize"]
 
         os.system(
-            'ffmpeg -loglevel quiet -i {} -filter:v "setpts={}*PTS" {}fps.mkv'.format(source_file, orgFR/frame, frame))
+            'ffmpeg -loglevel quiet -i {} -filter:v "setpts={}*PTS" {}fps.mkv'.format(
+                source_file, orgFR / frame, frame
+            )
+        )
         os.system(
-            'ffmpeg -loglevel quiet -i {}fps.mkv -filter:v scale="{}:trunc(ow/a/2)*2" -c:a copy {}p_{}fps.mkv'.format(frame, img, img, frame))
+            'ffmpeg -loglevel quiet -i {}fps.mkv -filter:v scale="{}:trunc(ow/a/2)*2" -c:a copy {}p_{}fps.mkv'.format(
+                frame, img, img, frame
+            )
+        )
 
-        return '{}p_{}fps.mkv'.format(img, frame)
+        return "{}p_{}fps.mkv".format(img, frame)
 
     @staticmethod
     def getImageDims(file):
+        ''' Returns the resolution of the image in a given video frame '''
         os.system(
-            'ffprobe -loglevel quiet -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {} > tmp.txt'.format(
-                file)
+            "ffprobe -loglevel quiet -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {} > tmp.txt".format(
+                file
+            )
         )
-        with open('tmp.txt', 'r') as f:
+        with open("tmp.txt", "r") as f:
             dims = f.readlines()[0]
             dims = dims[:-1]  # Remove the newline character
-            dims = [(int)(x) for x in dims.split(',')]
-        os.system('rm -rf tmp.txt')
+            dims = [(int)(x) for x in dims.split(",")]
+        os.system("rm -rf tmp.txt")
         return dims
 
     def scaleImage(self, file, dims):
+        ''' Scales the given file to the given resolution '''
         path = os.path.join(self.model_data, file)
-        outfile = os.path.join(self.model_data, 'out_' + file)
+        outfile = os.path.join(self.model_data, "out_" + file)
         os.system(
-            'ffmpeg -loglevel quiet -i {} -vf scale={}:{} {}'.format(
-                path, dims[0], dims[1], outfile)
+            "ffmpeg -loglevel quiet -i {} -vf scale={}:{} {}".format(
+                path, dims[0], dims[1], outfile
+            )
         )
         copyfile(outfile, path)
-        os.system('rm -rf {}'.format(outfile))
+        os.system("rm -rf {}".format(outfile))
 
     def runChameleon(self):
-        config = self.profile(1, self.params, self.top_config)
+        ''' Runs the Model '''
+        config = self.profile(1, self.configs, self.top_config)
         print("Top k Configs : ", config)
 
-    def getFrames(self, file, frame=0, outfile='res0'):
+    def getFrames(self, file, frame=0, outfile="res0"):
+        ''' Extract the given frame from the given file '''
         os.system(
-            'ffmpeg -loglevel quiet -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(file, frame, outfile))
-        os.system('mv {}.jpg {}'.format(outfile, self.model_data))
+            'ffmpeg -loglevel quiet -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(
+                file, frame, outfile
+            )
+        )
+        os.system("mv {}.jpg {}".format(outfile, self.model_data))
 
     def updateSpatial(self, videos, configurations):
         # Todo : Implement paper
@@ -73,16 +94,34 @@ class chameleon:
         # Todo : Implement paper
         return
 
+    @staticmethod
+    def getGoldenConfig():
+        return {"frameRate": 25, "imgSize": 1080, "models": "yolo"}
+
     def profile(self, segment, configurations, k):
+        ''' Profiles each of the knobs in the given configurations
+            returns the top-k configurations with the least resource consumption '''
+        knobVals = dict()
+        for knob in self.params:
+            knobVals[knob] = list()
+
+        for config in configurations:
+            for key, val in config.items():
+                if val not in knobVals[key]:
+                    knobVals[key].append(val)
+
+        print(knobVals)
+
         golden_config = self.getGoldenConfig()
         file = self.getData(golden_config, self.source_file)
         golden_dims = self.getImageDims(self.source_file)
         print(" +++ In profile : Golden Config Dims = " + str(golden_dims))
-        curr_config = golden_config
+        curr_config = self.getGoldenConfig()
         knob_val_to_score = dict()
-        for param in self.params:
-            curr_config = golden_config
-            for value in self.params[param]:
+
+        for param in knobVals:
+            curr_config = self.getGoldenConfig()
+            for value in knobVals[param]:
                 curr_config[param] = value
                 print("\n+++ Current Configuration : ", curr_config)
                 print("+++ Golden Configuration : ", golden_config, "\n")
@@ -91,73 +130,92 @@ class chameleon:
 
         accurate_configs = list()
 
-        for config in configurations:
-            config_score = 1
-            for param in configurations.keys():
-                config_score *= knob_val_to_score[configurations[param][0]]
-            if config_score >= self.accuracy:
-                accurate_configs.append(config)
+        configs = list()
+        allValues = list()
 
-        return accurate_configs
+        for param in knobVals:
+            allValues.append(knobVals[param])
 
-    @staticmethod
-    def getGoldenConfig():
-        return {"frameRate": 25, "imgSize": 1080, "models": 'yolo'}
+        configs = list(product(allValues[0], allValues[1], allValues[2]))
+
+        print("All Configurations : ", configs)
+
+        for config in configs:
+            score = 1
+            for value in config:
+                score *= knob_val_to_score[value]
+            print(config, score)
+            if score >= self.accuracy:
+                return_val = dict()
+                for n in range(len(self.params)):
+                    return_val[self.params[n]] = config[n]
+                accurate_configs.append(return_val)
+
+        k = min(k, len(accurate_configs))
+        # Sort accurate_configs by resource consumption - TODO
+
+        return accurate_configs[0:k]
 
     @staticmethod
     def getbbox(file):
-        # Redirect YOLO's output to a file having a list of dicts
-        # returns : list of tuples (Class, {Bounding Box : x1, x2, y1, y2})
+        ''' Returns the Bounding Boxes of the classes detected by YOLO
+            returns : list of tuples (Class, {Bounding Box : x1, x2, y1, y2}) '''
         bounding_boxes = list()
-        prev = ''
-        curr = ''
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             lines = f.readlines()
-            prev = ''
-            curr = ''
             lines = lines[1:]
             for n in range(0, len(lines)):
                 if n % 2 == 1:
                     box = [(int)(x) for x in lines[n].split()]
-                    obj = lines[n - 1].split(':')[0]
+                    obj = lines[n - 1].split(":")[0]
                     grp = (obj, box)
                     bounding_boxes.append(grp)
 
         return bounding_boxes
 
     def F1(self, segment, curr_config, gold_file, golden_dims):
+        ''' Compute the F1 score for a given config. wrt the golden config. 
+                    over `segment` no of segments '''
         sum = 0
         curr_file = self.getData(curr_config, self.source_file)
         for S in range(segment):
-            self.getFrames(curr_file, S, 'curr')
-            self.getFrames(gold_file, S, 'base')
+            self.getFrames(curr_file, S, "curr")
+            self.getFrames(gold_file, S, "base")
             # self.scaleImage('curr.jpg', golden_dims)
-            print("\n\n +++ YOLO Running +++ \n\n")
-            self.runYOLO('curr.jpg', 'base.jpg')
+            print("\n +++ YOLO Running +++ \n")
+            self.runYOLO("curr.jpg", "base.jpg")
             sum += self.getF1score()
 
         return sum / segment
 
     def runYOLO(self, curr_file, golden_file):
+        ''' Runs the Object Detection Model YOLO '''
         os.chdir(self.model_path)
         os.system(
-            './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(curr_file, 'curr.txt'))
+            "./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}".format(
+                curr_file, "curr.txt"
+            )
+        )
         os.system(
-            './darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}'.format(golden_file, 'base.txt'))
-        print("\n\n +++ YOLO Run completed +++ \n\n")
-        os.chdir('/home/kshitij/btp/Papers/Chaml_impl/')
+            "./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}".format(
+                golden_file, "base.txt"
+            )
+        )
+        print("\n +++ YOLO Run completed +++ \n")
+        os.chdir("/home/kshitij/btp/Papers/Chaml_impl/")
         return
 
     def getF1score(self):
+        ''' Returns F1 score of the config wrt Golden Config for the current frame '''
 
-        path = '/home/kshitij/btp/Papers/Chaml_impl/darknet'
-        file_golden = ''
-        file_current = ''
+        path = self.model_path
+        file_golden = ""
+        file_current = ""
         for file in os.listdir(path):
-            if file.endswith('.txt'):
-                if file.endswith('base.txt'):
+            if file.endswith(".txt"):
+                if file.endswith("base.txt"):
                     file_golden = file
-                if file.endswith('curr.txt'):
+                if file.endswith("curr.txt"):
                     file_current = file
         precision = 0.0
         recall = 0.0
@@ -176,15 +234,13 @@ class chameleon:
                     x_right = min(box_1[1][2], box_2[1][2])
                     y_bottom = min(box_1[1][3], box_2[1][3])
 
-                    if(x_left > x_right or y_top > y_bottom):
+                    if x_left > x_right or y_top > y_bottom:
                         continue
 
                     intersection = (x_right - x_left) * (y_bottom - y_top)
 
-                    A1 = (box_1[1][2] - box_1[1][0]) * \
-                        (box_1[1][3] - box_1[1][1])
-                    A2 = (box_2[1][2] - box_2[1][0]) * \
-                        (box_2[1][3] - box_2[1][1])
+                    A1 = (box_1[1][2] - box_1[1][0]) * (box_1[1][3] - box_1[1][1])
+                    A2 = (box_2[1][2] - box_2[1][0]) * (box_2[1][3] - box_2[1][1])
 
                     IoU = (intersection) / (A1 + A2 - intersection)
                     assert IoU >= 0.0
@@ -197,11 +253,14 @@ class chameleon:
 
         precision = true_positive / total_detect
         recall = true_positive / total_object
-        print("\n +++ True Pos = {}, Golden Config Obj. Cnt = {}, Curr Config Obj. Cnt = {} +++\n".format(
-            true_positive, total_detect, total_object))
+        print(
+            "\n +++ True Pos = {}, Golden Config Obj. Cnt = {}, Curr Config Obj. Cnt = {} +++\n".format(
+                true_positive, total_detect, total_object
+            )
+        )
         try:
             F1 = 2 / ((1 / precision) + (1 / recall))
-            print(F1)
+            print(" +++ F1 score = ", F1)
             return F1
         except:
             ZeroDivisionError
@@ -209,4 +268,5 @@ class chameleon:
 
 
 if __name__ == "__main__":
+    # Run the Model
     chameleon()
