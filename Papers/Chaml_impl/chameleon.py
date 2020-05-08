@@ -4,12 +4,23 @@ from shutil import copyfile
 from itertools import product
 
 
+class color:
+    RED = "\033[1;31m"
+    GREEN = "\033[1;32m"
+    YELLOW = "\033[1;33m"
+    BLUE = "\033[1;34m"
+    MAGENTA = "\033[1;35m"
+    CYAN = "\033[1;36m"
+    WHITE = "\033[1;37m"
+    REVERSE = "\033[0;0m"
+
+
 class chameleon:
     def __init__(self):
-        ''' Initialize all parameters and env paths '''
+        """ Initialize all parameters and env paths """
         self.configs = [
             {"frameRate": 20, "imgSize": 960, "models": "yolo"},
-            {"frameRate": 25, "imgSize": 1080, "models": "yolo"},
+            {"frameRate": 25, "imgSize": 1280, "models": "yolo"},
         ]
         self.params = ["frameRate", "imgSize", "models"]
 
@@ -23,11 +34,12 @@ class chameleon:
         self.accuracy = 0.8
         self.threshold = 0.5
         self.top_config = 2
+        self.colors = color()
         self.runChameleon()
 
     @staticmethod
     def getData(params, source_file):
-        ''' Convert the original videofile's params to those specified by `params` '''
+        """ Convert the original videofile's params to those specified by `params` """
         orgFR = 25
         frame = params["frameRate"]
         img = params["imgSize"]
@@ -47,7 +59,7 @@ class chameleon:
 
     @staticmethod
     def getImageDims(file):
-        ''' Returns the resolution of the image in a given video frame '''
+        """ Returns the resolution the given video frame """
         os.system(
             "ffprobe -loglevel quiet -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {} > tmp.txt".format(
                 file
@@ -61,24 +73,27 @@ class chameleon:
         return dims
 
     def scaleImage(self, file, dims):
-        ''' Scales the given file to the given resolution '''
-        path = os.path.join(self.model_data, file)
-        outfile = os.path.join(self.model_data, "out_" + file)
+        """ Scales the given file to the given resolution """
+        path = file
+        outfile = "out_" + file
+        print(" +++ Converting ",path, " to ", outfile)
         os.system(
             "ffmpeg -loglevel quiet -i {} -vf scale={}:{} {}".format(
-                path, dims[0], dims[1], outfile
+                path, dims[0], dims[0], outfile
             )
         )
-        copyfile(outfile, path)
-        os.system("rm -rf {}".format(outfile))
+        print(" +++ Conversion Done")
+        # copyfile(outfile, path)
+        # os.system("rm -rf {}".format(outfile))
+        return outfile
 
     def runChameleon(self):
-        ''' Runs the Model '''
+        """ Runs the Model """
         config = self.profile(1, self.configs, self.top_config)
-        print("Top k Configs : ", config)
+        print(self.colors.BLUE, "Top k Configs : ", config, self.colors.REVERSE)
 
     def getFrames(self, file, frame=0, outfile="res0"):
-        ''' Extract the given frame from the given file '''
+        """ Extract the given frame from the given file """
         os.system(
             'ffmpeg -loglevel quiet -i {} -vf "select=eq(n\,{})" -vframes 1 {}.jpg'.format(
                 file, frame, outfile
@@ -96,11 +111,11 @@ class chameleon:
 
     @staticmethod
     def getGoldenConfig():
-        return {"frameRate": 25, "imgSize": 1080, "models": "yolo"}
+        return {"frameRate": 25, "imgSize": 1280, "models": "yolo"}
 
     def profile(self, segment, configurations, k):
-        ''' Profiles each of the knobs in the given configurations
-            returns the top-k configurations with the least resource consumption '''
+        """ Profiles each of the knobs in the given configurations
+            returns the top-k configurations with the least resource consumption """
         knobVals = dict()
         for knob in self.params:
             knobVals[knob] = list()
@@ -123,8 +138,19 @@ class chameleon:
             curr_config = self.getGoldenConfig()
             for value in knobVals[param]:
                 curr_config[param] = value
-                print("\n+++ Current Configuration : ", curr_config)
-                print("+++ Golden Configuration : ", golden_config, "\n")
+                print(
+                    self.colors.BLUE,
+                    "\n+++ Current Configuration : ",
+                    curr_config,
+                    self.colors.REVERSE,
+                )
+                print(
+                    self.colors.BLUE,
+                    "+++ Golden Configuration : ",
+                    golden_config,
+                    "\n",
+                    self.colors.REVERSE,
+                )
                 F1_score = self.F1(segment, curr_config, file, golden_dims)
                 knob_val_to_score[value] = F1_score
 
@@ -138,13 +164,13 @@ class chameleon:
 
         configs = list(product(allValues[0], allValues[1], allValues[2]))
 
-        print("All Configurations : ", configs)
+        print(self.colors.GREEN, "All Configurations : ", configs, self.colors.REVERSE)
 
         for config in configs:
             score = 1
             for value in config:
                 score *= knob_val_to_score[value]
-            print(config, score)
+            print(self.colors.YELLOW, config, score, self.colors.REVERSE)
             if score >= self.accuracy:
                 return_val = dict()
                 for n in range(len(self.params)):
@@ -158,8 +184,8 @@ class chameleon:
 
     @staticmethod
     def getbbox(file):
-        ''' Returns the Bounding Boxes of the classes detected by YOLO
-            returns : list of tuples (Class, {Bounding Box : x1, x2, y1, y2}) '''
+        """ Returns the Bounding Boxes of the classes detected by YOLO
+            returns : list of tuples (Class, {Bounding Box : x1, x2, y1, y2}) """
         bounding_boxes = list()
         with open(file, "r") as f:
             lines = f.readlines()
@@ -174,22 +200,23 @@ class chameleon:
         return bounding_boxes
 
     def F1(self, segment, curr_config, gold_file, golden_dims):
-        ''' Compute the F1 score for a given config. wrt the golden config. 
-                    over `segment` no of segments '''
+        """ Compute the F1 score for a given config. wrt the golden config. 
+                    over `segment` no of segments """
         sum = 0
         curr_file = self.getData(curr_config, self.source_file)
+        # curr_file = self.scaleImage(curr_file, golden_dims) - Doesn't Work :/
         for S in range(segment):
             self.getFrames(curr_file, S, "curr")
             self.getFrames(gold_file, S, "base")
             # self.scaleImage('curr.jpg', golden_dims)
-            print("\n +++ YOLO Running +++ \n")
+            print(self.colors.RED, "\n +++ YOLO Running +++ \n", self.colors.REVERSE)
             self.runYOLO("curr.jpg", "base.jpg")
             sum += self.getF1score()
 
         return sum / segment
 
     def runYOLO(self, curr_file, golden_file):
-        ''' Runs the Object Detection Model YOLO '''
+        """ Runs the Object Detection Model YOLO """
         os.chdir(self.model_path)
         os.system(
             "./darknet detect cfg/yolov3.cfg yolov3.weights data/{} > {}".format(
@@ -201,12 +228,12 @@ class chameleon:
                 golden_file, "base.txt"
             )
         )
-        print("\n +++ YOLO Run completed +++ \n")
+        print(self.colors.RED, "\n +++ YOLO Run completed +++ \n", self.colors.REVERSE)
         os.chdir("/home/kshitij/btp/Papers/Chaml_impl/")
         return
 
     def getF1score(self):
-        ''' Returns F1 score of the config wrt Golden Config for the current frame '''
+        """ Returns F1 score of the config wrt Golden Config for the current frame """
 
         path = self.model_path
         file_golden = ""
@@ -254,13 +281,15 @@ class chameleon:
         precision = true_positive / total_detect
         recall = true_positive / total_object
         print(
+            self.colors.MAGENTA,
             "\n +++ True Pos = {}, Golden Config Obj. Cnt = {}, Curr Config Obj. Cnt = {} +++\n".format(
                 true_positive, total_detect, total_object
-            )
+            ),
+            self.colors.REVERSE,
         )
         try:
             F1 = 2 / ((1 / precision) + (1 / recall))
-            print(" +++ F1 score = ", F1)
+            print(self.colors.RED, " +++ F1 score = ", F1, self.colors.REVERSE)
             return F1
         except:
             ZeroDivisionError

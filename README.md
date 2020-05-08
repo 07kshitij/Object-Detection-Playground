@@ -27,7 +27,7 @@ $ cd Object-Detection-Playground/
 $ python3 -m venv vision
 ```
 3. ##### Set Environment Variables
-Change the field `HOME_PATH` in the file `.env` to the path of the directory where you've cloned this repository followed by this command
+Change the value of the field `HOME_PATH` in the file `.env` to the path of the directory where you've cloned this repository followed by this command
 
 ```
 $ source .env
